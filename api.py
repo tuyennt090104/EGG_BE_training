@@ -1,134 +1,91 @@
-from typing import Dict, List
 from fastapi import FastAPI, Depends, HTTPException
-from sqlmodel import Session, select
+from sqlmodel import Session
+
+from repository import IRepository, SqlmodelRepository
+
 from models import *
-from driver import create_db_and_tables, engine
 
-app = FastAPI()
+app: FastAPI = FastAPI()
+repo: IRepository = SqlmodelRepository()
 
 
-async def get_session():
-    with Session(engine) as session:
+def get_session():
+    with repo.make_session() as session:
         yield session
-
-
-@app.on_event("startup")
-async def on_startup():
-    create_db_and_tables()
 
 
 @app.post("/products/", response_model=ProductRead)
 async def create_product(*, session: Session = Depends(get_session), product: ProductCreate):
-    db_product = Product.from_orm(product)
-    session.add(db_product)
-    session.commit()
-    session.refresh(db_product)
-    return db_product
+    return repo.create_product(session, product)
 
 
-@app.get("/products/", response_model=List[ProductReadCompact])
+@app.get("/products/", response_model=List[ProductRead])
 async def get_all_products(*, session: Session = Depends(get_session)):
-    products = session.exec(select(Product)).all()
-    return products
+    return repo.get_all_products(session)
 
 
-@app.get("/products/{index}", response_model=ProductReadWithOrderProducts)
-async def get_detail_product(*, session: Session = Depends(get_session), index: int):
-    product = session.get(Product, index)
+@app.get("/products/{id}", response_model=ProductReadWithOderProducts)
+async def get_detail_product(*, session: Session = Depends(get_session), id: int):
+    product = repo.get_by_id_product(session, id)
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
+        raise HTTPException(status_code=404, detail="product not found")
     return product
 
 
-@app.patch("/products/{index}", response_model=ProductRead)
-async def update_product(*, session: Session = Depends(get_session), index: int, product: ProductUpdate):
-    db_product = session.get(Product, index)
-    if not db_product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    product_data = product.dict(exclude_unset=True)
-    for key, value in product_data.items():
-        setattr(db_product, key, value)
-    session.add(db_product)
-    session.commit()
-    session.refresh(db_product)
-    return db_product
+@app.patch("/products/{id}", response_model=ProductRead)
+async def update_product(*, session: Session = Depends(get_session), id: int, product: ProductUpdate):
+    updated_product = repo.update_by_id_product(session, id, product)
+    if not updated_product:
+        raise HTTPException(status_code=404, detail="product not found")
+    return updated_product
 
 
-@app.delete("/products/{index}")
-async def delete_product(*, session: Session = Depends(get_session), index: int):
-    product = session.get(Product, index)
-    if not product:
-        raise HTTPException(status_code=404, detail="Product not found")
-    session.delete(product)
-    session.commit()
-    return {"oke": True}
+@app.delete("/products/{id}")
+async def delete_product(*, session: Session = Depends(get_session), id: int):
+    if repo.delete_by_id_product(session, id):
+        return {"ok": True}
+    raise HTTPException(status_code=404, detail="product not found")
 
 
 @app.post("/customers/", response_model=CustomerRead)
 async def create_customer(*, session: Session = Depends(get_session), customer: CustomerCreate):
-    db_customer = Customer.from_orm(customer)
-    session.add(db_customer)
-    session.commit()
-    session.refresh(db_customer)
-    return db_customer
+    return repo.create_customer(session, customer)
 
 
 @app.get("/customers/", response_model=List[CustomerRead])
-async def get_all_customers(*, session: Session = Depends(get_session)):
-    customers = session.exec(select(Customer)).all()
-    return customers
+def get_all_customers(*, session: Session = Depends(get_session)):
+    return repo.get_all_customers(session)
 
 
-@app.get("/customers/{index}", response_model=CustomerReadWithOrders)
-async def get_detail_customer(*, session: Session = Depends(get_session), index: int):
-    customer = session.get(Customer, index)
+@app.get("/customers/{id}", response_model=CustomerReadWithOrders)
+def get_detail_customer(*, session: Session = Depends(get_session), id: int):
+    customer = repo.get_by_id_customer(session, id)
     if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
+        raise HTTPException(status_code=404, detail="customer not found")
     return customer
 
 
-@app.patch("/customers/{index}", response_model=CustomerRead)
-async def update_customer(*, session: Session = Depends(get_session), index: int, customer: CustomerUpdate):
-    db_customer = session.get(Customer, index)
-    if not db_customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    customer_data = customer.dict(exclude_unset=True)
-    for key, value in customer_data.items():
-        setattr(db_customer, key, value)
-    session.add(db_customer)
-    session.commit()
-    session.refresh(db_customer)
-    return db_customer
+@app.patch("/customers/{id}", response_model=CustomerRead)
+def update_customer(*, session: Session = Depends(get_session), id: int, customer: CustomerUpdate):
+    updated_customer = repo.update_by_id_customer(session, id, customer)
+    if not updated_customer:
+        raise HTTPException(status_code=404, detail="customer not found")
+    return updated_customer
 
 
-@app.delete("/customers/{index}")
-async def delete_customer(*, session: Session = Depends(get_session), index: int):
-    customer = session.get(Customer, index)
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    session.delete(customer)
-    session.commit()
-    return {"Ok": True}
+@app.delete("/customers/{id}")
+def delete_customer(*, session: Session = Depends(get_session), id: int):
+    if repo.delete_by_id_customer(session, id):
+        return {"ok": True}
+    raise HTTPException(status_code=404, detail="customer not found")
 
 
 @app.post("/orders/", response_model=OrderRead)
-async def create_order(*, session: Session = Depends(get_session), order: OrderCreate):
-    if not order.create_at:
-        order.create_at = datetime.now()
-    db_order = Order.from_orm(order)
-    session.add(db_order)
-    session.commit()
-    session.refresh(db_order)
-    return db_order
+def create_order(*, session: Session = Depends(get_session), order: OrderCreate):
+    return repo.create_order(session, order)
 
 
-@app.patch("/orders/{index}", response_model=OrderRead)
-async def convert_status(*, session: Session = Depends(get_session), index: int):
-    order = session.get(Order, index)
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    order.order_status = Status.done
-    session.add(order)
-    session.commit()
-    session.refresh(order)
-    return order
+@app.patch("/orders/{id}", response_model=OrderRead)
+def convert_status_order(*, session: Session = Depends(get_session), id: int):
+    order = OrderUpdate.parse_obj({"order_status": OrderStatus.done})
+    return repo.update_by_id_order(session, id, order)
